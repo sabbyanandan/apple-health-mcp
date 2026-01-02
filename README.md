@@ -2,8 +2,6 @@
 
 An MCP server that streams your Apple Health data to Claude. Say "GM" and get a personalized daily health briefing based on your HRV, sleep, heart rate zones, and training patterns.
 
-I built this in a weekend. You can too.
-
 ## Why This Exists
 
 I wanted Claude to understand my body. Not generic health advice. My HRV. My sleep. My training load. Every morning I say "GM" and Claude tells me how I'm actually doing and what I should do about it.
