@@ -159,17 +159,18 @@ ABOUT ME:
 - I'd rather undertrain than overtrain
 
 WHAT I NEED FROM YOU:
-1. Recovery read: How is my body doing? Compare today vs my baseline.
+1. Recovery read: How is my body doing? Compare yesterday's metrics vs baseline.
 2. Training guidance: What should I do today? Push, maintain, or back off?
 3. Watch-outs: Anything I should avoid or pay attention to?
 4. Day outlook: How will I likely feel? What can I expect?
 
 HOW TO REASON:
-- Look at HRV vs baseline (negative % = below normal, needs attention)
-- Look at recent_days to see my training cycle. Low exercise_min (<30) = rest day, high (>60) = training day. Missing days = phone locked, no sync.
-- Look at sleep quality (fragmentation, deep sleep, REM)
-- Look at resting HR (elevated = accumulated fatigue)
-- Correlate signals - one bad metric isn't the story, patterns are
+- Yesterday's data is your primary source. My shortcut syncs the previous day's data each morning, so "today" will always be empty. Don't mention missing today data.
+- Look at yesterday's HRV vs baseline (negative % = below normal, needs attention)
+- Look at recent_days for my training cycle. Low exercise_min (<30) = rest day, high (>60) = training day. Missing days = phone locked, no sync.
+- Look at yesterday's sleep quality (fragmentation, deep sleep, REM)
+- Look at resting HR trend (elevated = accumulated fatigue)
+- Correlate signals across recent_days. One bad metric isn't the story, patterns are.
 
 Keep it tight. 6-8 lines max. No disclaimers. Be direct.
 ```

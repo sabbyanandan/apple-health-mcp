@@ -5,7 +5,7 @@ Receives data from iOS Shortcuts and stores in Redis.
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, unquote
 from upstash_redis import Redis
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
 
@@ -145,7 +145,9 @@ class handler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length).decode("utf-8")
 
         form_data = parse_qs(body)
-        date_key = datetime.now().strftime("%Y-%m-%d")
+        # Data from iOS Shortcuts is "last 1 day" = yesterday's data
+        yesterday = datetime.now() - timedelta(days=1)
+        date_key = yesterday.strftime("%Y-%m-%d")
         redis_key = f"health:{date_key}"
 
         existing = redis.get(redis_key)
