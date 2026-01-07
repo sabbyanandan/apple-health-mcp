@@ -118,6 +118,17 @@ def compute_stats(values: list, key: str = "") -> dict:
     if not nums:
         return {"count": len(values)}
 
+    # Cumulative metrics: daily totals from Watch (filtered in iOS Shortcuts)
+    # Steps, Exercise, Active Energy use "Group by: Day" + Watch source filter
+    cumulative_metrics = ["steps", "exercise", "activeenergy"]
+
+    if key_lower in cumulative_metrics:
+        return {
+            "total": round(max(nums)),
+            "sources": len(nums)
+        }
+
+    # Discrete metrics: compute full statistics
     result = {
         "avg": round(sum(nums) / len(nums), 2),
         "min": round(min(nums), 2),

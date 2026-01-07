@@ -76,21 +76,39 @@ Each sub-shortcut does two things:
 2. **Get Contents of URL** - POST to `https://your-app.vercel.app/api/ingest`
    - Method: POST
    - Headers: `Authorization: Bearer YOUR_API_KEY`
-   - Body: Form encoded, with field name matching the metric:
+   - Body: Form encoded, with field name matching the metric
 
-| Field name | Health metric |
-|------------|---------------|
-| `hrv` | Heart Rate Variability |
-| `heartRate` | Heart Rate |
-| `sleep` | Sleep Analysis |
-| `steps` | Step Count |
-| `exercise` | Exercise Minutes |
-| `respRate` | Respiratory Rate |
+**Critical configuration:**
+
+| Field name | Health metric | Group by: Day | Source Filter |
+|------------|---------------|---------------|---------------|
+| `steps` | Step Count | YES | Your Apple Watch |
+| `exercise` | Exercise Minutes | YES | Your Apple Watch |
+| `activeEnergy` | Active Energy | YES | Your Apple Watch |
+| `hrv` | Heart Rate Variability | NO | None |
+| `heartRate` | Heart Rate | NO | None |
+| `respRate` | Respiratory Rate | NO | None |
+| `sleep` | Sleep Analysis | NO | None |
+
+**Why this matters:**
+
+Cumulative metrics (steps, exercise, active energy) need special handling:
+- **Group by: Day** aggregates readings into daily totals instead of individual samples
+- **Source Filter** prevents double-counting. Without it, iOS returns readings from both iPhone and Apple Watch, inflating totals by ~20%
+
+Discrete metrics (HRV, heart rate, respiratory rate) should NOT use grouping. They need individual samples for proper avg/min/max calculations.
 
 <details>
 <summary>Sub-shortcut Example</summary>
 
 ![Shortcut Example](screenshots/shortcut-example.jpg)
+
+</details>
+
+<details>
+<summary>Steps Shortcut with Group by Day + Source Filter</summary>
+
+![Steps Shortcut](screenshots/steps-shortcut.png)
 
 </details>
 
@@ -166,6 +184,7 @@ HOW TO REASON:
 - Yesterday's data is your primary source. My shortcut syncs the previous day's data each morning, so "today" will always be empty. Don't mention missing today data.
 - Look at yesterday's HRV vs baseline (negative % = below normal, needs attention)
 - Look at recent_days for my training cycle. Low exercise_min (<30) = rest day, high (>60) = training day. Missing days = phone locked, no sync.
+- Look at hr_zones for training intensity. High "hard"/"max" percentage = intense session. High "rest" = easy day or no workout.
 - Look at yesterday's sleep quality (fragmentation, deep sleep, REM)
 - Look at resting HR trend (elevated = accumulated fatigue)
 - Correlate signals across recent_days. One bad metric isn't the story, patterns are.
@@ -189,6 +208,24 @@ The magic is letting the LLM reason. It notices things like:
 | `get_today` | All raw metrics for today |
 | `get_trends` | Multi-day view (default 7 days) |
 | `get_recovery_status` | HRV vs baseline + last 3 days of training context |
+
+## Troubleshooting
+
+**Steps/exercise showing wrong values?**
+- Verify "Group by: Day" is enabled for cumulative metrics (steps, exercise, activeEnergy)
+- Verify Source Filter is set to your Apple Watch name
+- Without these settings, you get sample counts instead of totals, and double-counted values
+
+**Heart rate showing absurdly high values (e.g., 26,000)?**
+- You accidentally enabled "Group by: Day" on a discrete metric
+- Remove grouping from HRV, heartRate, and respRate shortcuts
+
+**Data not matching Apple Health exactly?**
+- HRV may differ slightly. Apple shows specific readings, we average all samples.
+- Steps/exercise should match exactly with correct shortcut configuration.
+
+**"No data synced today" error?**
+- This is expected. Your shortcuts sync yesterday's data. Use `get_recovery_status` which includes `recent_days`.
 
 ## Security
 

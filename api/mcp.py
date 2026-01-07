@@ -49,6 +49,23 @@ def get_health_data(date_key: str) -> dict:
     return json.loads(data) if data else {}
 
 
+def get_cumulative_value(data: dict, key: str) -> int:
+    """Get value for cumulative metrics (steps, exercise, activeEnergy).
+
+    Handles new format (total) and old format (avg * count).
+    """
+    metric = data.get(key, {})
+    if not metric:
+        return 0
+    # New format
+    if "total" in metric:
+        return metric["total"]
+    # Old format: reconstruct total from avg * count
+    if "avg" in metric and "count" in metric:
+        return round(metric["avg"] * metric["count"])
+    return 0
+
+
 def get_hrv_baseline(days: int = 14) -> dict:
     """Calculate HRV baseline from recent history."""
     hrv_values = []
@@ -86,8 +103,8 @@ def tool_get_trends(days: int = 7) -> str:
             day_data = {
                 "hrv": data.get("hrv", {}).get("avg"),
                 "resting_hr": data.get("heartRate", {}).get("min"),
-                "exercise_min": data.get("exercise", {}).get("count", 0),
-                "steps": data.get("steps", {}).get("count", 0)
+                "exercise_min": get_cumulative_value(data, "exercise"),
+                "steps": get_cumulative_value(data, "steps")
             }
             # Include HR zones if available
             if "heartRate" in data and "hr_zones" in data["heartRate"]:
@@ -115,7 +132,7 @@ def get_day_summary(data: dict) -> dict:
     if "heartRate" in data and "hr_zones" in data["heartRate"]:
         summary["hr_zones"] = data["heartRate"]["hr_zones"].get("zone_pct")
     if "exercise" in data:
-        summary["exercise_min"] = data["exercise"].get("count", 0)
+        summary["exercise_min"] = get_cumulative_value(data, "exercise")
     return summary if summary else None
 
 
@@ -158,7 +175,7 @@ def tool_get_recovery_status() -> str:
 
     # Exercise minutes
     if "exercise" in data:
-        status["exercise_min"] = data["exercise"].get("count", 0)
+        status["exercise_min"] = get_cumulative_value(data, "exercise")
 
     # Respiratory rate
     if "respRate" in data:
@@ -166,7 +183,7 @@ def tool_get_recovery_status() -> str:
 
     # Steps
     if "steps" in data:
-        status["steps"] = data["steps"].get("count", 0)
+        status["steps"] = get_cumulative_value(data, "steps")
 
     # Last 3 days for training pattern context
     recent_days = {}
