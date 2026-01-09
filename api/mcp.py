@@ -10,10 +10,6 @@ import json
 import os
 
 MCP_SECRET = os.environ.get("MCP_SECRET", "")
-
-# Optional: User's typical weekly exercise routine (context for Claude, not math)
-# Format: "strength:4,yoga:7,meditation:7,cardio:2" (days per week)
-# If not set, Claude relies purely on HR zone data
 EXERCISE_DAYS_PER_WEEK = os.environ.get("EXERCISE_DAYS_PER_WEEK", "")
 
 redis = Redis(
@@ -49,21 +45,78 @@ def get_health_data(date_key: str) -> dict:
     return json.loads(data) if data else {}
 
 
-def get_cumulative_value(data: dict, key: str) -> int:
-    """Get value for cumulative metrics (steps, exercise, activeEnergy).
-
-    Handles new format (total) and old format (avg * count).
-    """
-    metric = data.get(key, {})
-    if not metric:
+def get_cumulative_total(metric_data: dict) -> int:
+    """Extract total from cumulative metric. Handles both storage formats."""
+    if not metric_data:
         return 0
-    # New format
-    if "total" in metric:
-        return metric["total"]
-    # Old format: reconstruct total from avg * count
-    if "avg" in metric and "count" in metric:
-        return round(metric["avg"] * metric["count"])
+    if "total" in metric_data:
+        return metric_data["total"]
+    if "avg" in metric_data and "count" in metric_data:
+        return round(metric_data["avg"] * metric_data["count"])
     return 0
+
+
+def get_exercise_key(data: dict) -> str:
+    """Handle iOS Shortcut naming quirk. Some configs have trailing space."""
+    if "exercise " in data:
+        return "exercise "
+    return "exercise"
+
+
+def extract_day_metrics(data: dict) -> dict:
+    """
+    Extract all health metrics from a day's data.
+    Single source of truth for field extraction across all tools.
+    """
+    if not data:
+        return None
+
+    metrics = {}
+
+    # HRV
+    if "hrv" in data and data["hrv"].get("avg"):
+        metrics["hrv"] = round(data["hrv"]["avg"], 1)
+
+    # Heart rate
+    if "heartRate" in data:
+        hr = data["heartRate"]
+        if hr.get("min"):
+            metrics["resting_hr"] = round(hr["min"], 1)
+        if "hr_zones" in hr and hr["hr_zones"].get("zone_pct"):
+            metrics["hr_zones"] = hr["hr_zones"]["zone_pct"]
+
+    # Sleep
+    if "sleep" in data:
+        sleep = data["sleep"]
+        metrics["sleep"] = {
+            "quality": sleep.get("quality"),
+            "fragmentation_pct": sleep.get("fragmentation_pct"),
+            "has_deep": sleep.get("has_deep"),
+            "has_rem": sleep.get("has_rem")
+        }
+
+    # Exercise minutes
+    exercise_key = get_exercise_key(data)
+    if exercise_key in data:
+        metrics["exercise_min"] = get_cumulative_total(data[exercise_key])
+
+    # Steps
+    if "steps" in data:
+        metrics["steps"] = get_cumulative_total(data["steps"])
+
+    # Active calories
+    if "activeEnergy" in data:
+        metrics["active_calories"] = get_cumulative_total(data["activeEnergy"])
+
+    # Mindful minutes
+    if "mindful" in data:
+        metrics["mindful_min"] = get_cumulative_total(data["mindful"])
+
+    # Respiratory rate
+    if "respRate" in data and data["respRate"].get("avg"):
+        metrics["respiratory_rate"] = round(data["respRate"]["avg"], 1)
+
+    return metrics if metrics else None
 
 
 def get_hrv_baseline(days: int = 14) -> dict:
@@ -94,50 +147,21 @@ def tool_get_today() -> str:
 
 
 def tool_get_trends(days: int = 7) -> str:
-    """Get raw health trends over multiple days."""
+    """Get health metrics over multiple days."""
     results = {}
     for i in range(days):
         date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
         data = get_health_data(date)
-        if data:
-            day_data = {
-                "hrv": data.get("hrv", {}).get("avg"),
-                "resting_hr": data.get("heartRate", {}).get("min"),
-                "exercise_min": get_cumulative_value(data, "exercise"),
-                "steps": get_cumulative_value(data, "steps")
-            }
-            # Include HR zones if available
-            if "heartRate" in data and "hr_zones" in data["heartRate"]:
-                day_data["hr_zones"] = data["heartRate"]["hr_zones"].get("zone_pct")
-            # Include sleep data
-            if "sleep" in data:
-                day_data["sleep"] = {
-                    "fragmentation_pct": data["sleep"].get("fragmentation_pct"),
-                    "has_deep": data["sleep"].get("has_deep"),
-                    "has_rem": data["sleep"].get("has_rem")
-                }
-            results[date] = day_data
+        metrics = extract_day_metrics(data)
+        if metrics:
+            results[date] = metrics
     if not results:
         return json.dumps({"error": f"No data for last {days} days."})
     return json.dumps(results, indent=2)
 
 
-def get_day_summary(data: dict) -> dict:
-    """Extract minimal summary for a day's data."""
-    if not data:
-        return None
-    summary = {}
-    if "hrv" in data and data["hrv"].get("avg"):
-        summary["hrv"] = round(data["hrv"]["avg"], 1)
-    if "heartRate" in data and "hr_zones" in data["heartRate"]:
-        summary["hr_zones"] = data["heartRate"]["hr_zones"].get("zone_pct")
-    if "exercise" in data:
-        summary["exercise_min"] = get_cumulative_value(data, "exercise")
-    return summary if summary else None
-
-
 def tool_get_recovery_status() -> str:
-    """Return raw health data for LLM reasoning. No pre-computed recommendations."""
+    """Get recovery status with baseline comparisons and recent history."""
     date_key = datetime.now().strftime("%Y-%m-%d")
     data = get_health_data(date_key)
     baseline = get_hrv_baseline()
@@ -147,52 +171,29 @@ def tool_get_recovery_status() -> str:
         "weekly_routine": parse_exercise_routine() or None
     }
 
-    # HRV - raw numbers only
-    if "hrv" in data and data["hrv"].get("avg"):
-        hrv = data["hrv"]["avg"]
-        status["hrv"] = {
-            "today": round(hrv, 1),
-            "baseline": baseline.get("baseline"),
-            "baseline_days": baseline.get("days", 0),
-            "vs_baseline_pct": round(((hrv - baseline["baseline"]) / baseline["baseline"]) * 100) if baseline.get("baseline") else None
-        }
+    # Today's metrics (if synced)
+    today_metrics = extract_day_metrics(data)
+    if today_metrics:
+        status["today"] = today_metrics
 
-    # Resting HR
-    if "heartRate" in data:
-        hr = data["heartRate"]
-        status["resting_hr"] = hr.get("min")
-        if "hr_zones" in hr:
-            status["hr_zones"] = hr["hr_zones"].get("zone_pct")
+        # Add HRV baseline comparison if available
+        if "hrv" in today_metrics and baseline.get("baseline"):
+            hrv = today_metrics["hrv"]
+            status["hrv_vs_baseline"] = {
+                "today": hrv,
+                "baseline": baseline["baseline"],
+                "baseline_days": baseline["days"],
+                "pct_diff": round(((hrv - baseline["baseline"]) / baseline["baseline"]) * 100)
+            }
 
-    # Sleep - raw data
-    if "sleep" in data:
-        status["sleep"] = {
-            "stages": data["sleep"].get("stages"),
-            "fragmentation_pct": data["sleep"].get("fragmentation_pct"),
-            "has_deep": data["sleep"].get("has_deep"),
-            "has_rem": data["sleep"].get("has_rem")
-        }
-
-    # Exercise minutes
-    if "exercise" in data:
-        status["exercise_min"] = get_cumulative_value(data, "exercise")
-
-    # Respiratory rate
-    if "respRate" in data:
-        status["respiratory_rate"] = data["respRate"].get("avg")
-
-    # Steps
-    if "steps" in data:
-        status["steps"] = get_cumulative_value(data, "steps")
-
-    # Last 3 days for training pattern context
+    # Recent days for pattern analysis
     recent_days = {}
     for i in range(1, 4):
         day_key = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
         day_data = get_health_data(day_key)
-        summary = get_day_summary(day_data)
-        if summary:
-            recent_days[f"day_minus_{i}"] = summary
+        metrics = extract_day_metrics(day_data)
+        if metrics:
+            recent_days[f"day_minus_{i}"] = metrics
     if recent_days:
         status["recent_days"] = recent_days
 
@@ -204,12 +205,12 @@ def tool_get_recovery_status() -> str:
 TOOLS = [
     {
         "name": "get_today",
-        "description": "Get all raw health data for today: HRV, heart rate (with HR zones), sleep stages, steps, exercise minutes, respiratory rate.",
+        "description": "Get raw health data for today. Returns unprocessed data as stored.",
         "inputSchema": {"type": "object", "properties": {}, "required": []}
     },
     {
         "name": "get_trends",
-        "description": "Get raw health data over multiple days: HRV, resting HR, exercise minutes, steps, HR zones, sleep data.",
+        "description": "Get health metrics over multiple days: HRV, resting HR, HR zones, sleep, exercise minutes, steps, active calories, mindful minutes, respiratory rate.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -220,7 +221,7 @@ TOOLS = [
     },
     {
         "name": "get_recovery_status",
-        "description": "Get recovery data: HRV (today vs 14-day baseline), resting HR, sleep, exercise minutes, HR zones, plus last 3 days for training pattern context. Includes user's weekly routine.",
+        "description": "Get comprehensive recovery data: today's metrics (HRV, resting HR, HR zones, sleep, exercise, steps, calories, mindful minutes, respiratory rate) with HRV baseline comparison, plus last 3 days with full metrics for trend analysis. Includes weekly exercise routine.",
         "inputSchema": {"type": "object", "properties": {}, "required": []}
     }
 ]

@@ -22,10 +22,12 @@ Apple Watch → iPhone Health App → iOS Shortcuts → Vercel → Upstash Redis
 
 Every morning, Claude gives you:
 
-- **Recovery read**: HRV vs your 14-day baseline, sleep quality, resting HR
+- **Recovery read**: HRV vs your 14-day baseline, sleep quality, resting HR trends
 - **Training guidance**: Push, maintain, or back off based on your body's signals
-- **Watch-outs**: Patterns worth monitoring
+- **Watch-outs**: Patterns worth monitoring (sleep fragmentation, elevated HR, skipped meditation)
 - **Day outlook**: How you'll likely feel
+
+Claude sees all your metrics: HRV, resting HR, HR zones, sleep (quality, fragmentation, deep/REM), exercise minutes, steps, active calories, mindful minutes, and respiratory rate.
 
 <details>
 <summary>Example Output</summary>
@@ -89,6 +91,7 @@ Each sub-shortcut does two things:
 | `heartRate` | Heart Rate | NO | None |
 | `respRate` | Respiratory Rate | NO | None |
 | `sleep` | Sleep Analysis | NO | None |
+| `mindful` | Mindful Minutes | NO | None |
 
 **Why this matters:**
 
@@ -187,6 +190,8 @@ HOW TO REASON:
 - Look at hr_zones for training intensity. High "hard"/"max" percentage = intense session. High "rest" = easy day or no workout.
 - Look at yesterday's sleep quality (fragmentation, deep sleep, REM)
 - Look at resting HR trend (elevated = accumulated fatigue)
+- Look at steps and active_calories for total daily load. High step counts (>8k) or calories (>800) on top of training means more recovery/nutrition needed.
+- Look at mindful_min for stress management. Zero meditation during high training load amplifies fatigue.
 - Correlate signals across recent_days. One bad metric isn't the story, patterns are.
 
 Keep it tight. 6-8 lines max. No disclaimers. Be direct.
@@ -205,9 +210,9 @@ The magic is letting the LLM reason. It notices things like:
 
 | Tool | What it does |
 |------|--------------|
-| `get_today` | All raw metrics for today |
-| `get_trends` | Multi-day view (default 7 days) |
-| `get_recovery_status` | HRV vs baseline + last 3 days of training context |
+| `get_today` | Raw health data for today (unprocessed) |
+| `get_trends` | Full metrics over multiple days (default 7 days) |
+| `get_recovery_status` | Comprehensive view: HRV vs 14-day baseline, plus last 3 days with all metrics (HRV, resting HR, HR zones, sleep, exercise, steps, calories, mindful, respiratory rate) |
 
 ## Troubleshooting
 
